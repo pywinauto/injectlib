@@ -32,21 +32,23 @@
 import os
 import shutil
 import subprocess
-from setuptools import setup
+from setuptools import setup, find_packages
 from setuptools.dist import Distribution
+import sys
 
 
 x86_cmake_arch_name, x64_cmake_arch_name = 'Win32', 'x64'
 x86_package_arch_name, x64_package_arch_name = 'x86', 'x64'
 
-arch_names_map = {
-    x86_cmake_arch_name: x86_package_arch_name,
-    x64_cmake_arch_name: x64_package_arch_name
-}
+is_64bit = sys.maxsize > 2**32
+if is_64bit:
+    arch_names_map = { x64_cmake_arch_name: x64_package_arch_name }
+else:
+    arch_names_map = { x86_cmake_arch_name: x86_package_arch_name }
 
 build_dirname = 'build_'
-build_dll_dirs = ['./backends/dotnet/', './backends/hook/']
-package_dll_dirs = ['./injectdll/libs/dotnet/', './injectdll/libs/hook/']
+build_dll_dirs = ['./backends/dotnet/', './backends/hook/', './backends/qt/']
+package_dll_dirs = ['./src/injectdll/libs/dotnet/', './src/injectdll/libs/hook/', './src/injectdll/libs/qt/']
 cmake_dirs = build_dll_dirs
 
 # cmake build for DLLs
@@ -57,7 +59,7 @@ for arch in arch_names_map:
         os.makedirs(build_dir, exist_ok=True)
 
         subprocess.check_call(['cmake', '-B ' + build_dir, '-S ' + cmake_dir, '-A ' + arch])
-        subprocess.check_call(['cmake', '--build', build_dir])
+        subprocess.check_call(['cmake', '--build', build_dir, '--config', 'Release'])
 
 # copy DLLs to the package
 for arch in arch_names_map:
@@ -89,7 +91,8 @@ It allows to inject DLls into applications for the Microsoft Windows.
 """,
       platforms=['win32'],
 
-      packages=["injectdll"],
+      packages=find_packages(where="src"),
+      package_dir={"": "src"},
       include_package_data=True,
 
       license="BSD 3-clause",

@@ -48,7 +48,7 @@ class Injector(object):
         self.h_process = self._get_process_handle(self.pid)
 
         self.dll_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                                     '../libs', backend_name,
+                                     'libs', backend_name,
                                      'x{}'.format("64" if sysinfo.is64_bitprocess(self.pid) else "86"),
                                      '{}.dll'.format(dll_name)).encode('utf-16' if self.is_unicode
                                                                        else locale.getpreferredencoding())

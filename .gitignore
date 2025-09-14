@@ -34,6 +34,7 @@
 *.i*86
 *.x86_64
 *.hex
+*.dll
 
 # Debug files
 *.dSYM/
@@ -49,3 +50,9 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Build artifacts
+*build_*
+
+# editable package data
+*.egg-info*
