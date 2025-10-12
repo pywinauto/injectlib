@@ -220,7 +220,7 @@ void QtHelloServer::bootstrap() {
     const int pollMs  = read_env_int(L"QT_INJECTED_POLL_MS", 100);   // 100ms default
 
     if (!wait_for_gui_loop(totalMs, pollMs)) {
-        dbg(QString::fromLatin1("[injectdll] GUI event loop not ready — not starting server (waited %1 ms)\n")
+        dbg(QString::fromLatin1("[injected] GUI event loop not ready — not starting server (waited %1 ms)\n")
                 .arg(totalMs));
         return;
     }
@@ -231,7 +231,7 @@ void QtHelloServer::bootstrap() {
     if (srv->thread() != app->thread())
         srv->moveToThread(app->thread());
 
-    dbg(QString::fromLatin1("[injectdll] GUI loop ready. Queueing server start...\n"));
+    dbg(QString::fromLatin1("[injected] GUI loop ready. Queueing server start...\n"));
 
     // Qt5-safe: queue onto the receiver's thread
     QTimer::singleShot(0, srv, SLOT(start()));
@@ -247,11 +247,11 @@ void QtHelloServer::shutdown() {
 
 // Create and start the TCP server on the GUI thread
 void QtHelloServer::start() {
-    dbg(QString::fromLatin1("[injectdll] start() entered on thread %1\n")
+    dbg(QString::fromLatin1("[injected] start() entered on thread %1\n")
         .arg(reinterpret_cast<qulonglong>(QThread::currentThreadId())));
 
     if (isRunning()) {
-        dbg(QString::fromLatin1("[injectdll] Already running on %1:%2\n")
+        dbg(QString::fromLatin1("[injected] Already running on %1:%2\n")
                 .arg(m_bindAddr.toString()).arg(m_port));
         return;
     }
@@ -267,14 +267,14 @@ void QtHelloServer::start() {
 
     if (!m_server->listen(m_bindAddr, requestedPort)) {
         const QString err = m_server->errorString();
-        dbg(QString::fromLatin1("[injectdll] listen(%1:%2) FAILED: %3\n")
+        dbg(QString::fromLatin1("[injected] listen(%1:%2) FAILED: %3\n")
                 .arg(m_bindAddr.toString()).arg(requestedPort).arg(err));
         m_port = 0;
         return;
     }
 
     m_port = m_server->serverPort();
-    dbg(QString::fromLatin1("[injectdll] Server started on %1:%2 (thread %3)\n")
+    dbg(QString::fromLatin1("[injected] Server started on %1:%2 (thread %3)\n")
             .arg(m_bindAddr.toString()).arg(m_port)
             .arg(reinterpret_cast<qulonglong>(QThread::currentThreadId())));
     emit started(m_port);
@@ -286,7 +286,7 @@ void QtHelloServer::stop() {
 
     m_server->close();
     m_port = 0;
-    dbg(QString::fromLatin1("[injectdll] Server stopped.\n"));
+    dbg(QString::fromLatin1("[injected] Server stopped.\n"));
     emit stopped();
 }
 
@@ -294,7 +294,7 @@ void QtHelloServer::onNewConnection() {
     while (m_server->hasPendingConnections()) {
         QTcpSocket* c = m_server->nextPendingConnection();
 
-        dbg(QString::fromLatin1("[injectdll] New connection (sock=%1)\n")
+        dbg(QString::fromLatin1("[injected] New connection (sock=%1)\n")
                 .arg(reinterpret_cast<qulonglong>(c)));
 
         connect(c, &QTcpSocket::disconnected, c, &QObject::deleteLater);
@@ -307,7 +307,7 @@ void QtHelloServer::onNewConnection() {
                 bool ok = false;
                 int length = lenLine.toInt(&ok);
                 if (!ok || length <= 0) {
-                    dbg(QString::fromLatin1("[injectdll] Invalid frame length: '%1'\n").arg(QString::fromLatin1(lenLine)));
+                    dbg(QString::fromLatin1("[injected] Invalid frame length: '%1'\n").arg(QString::fromLatin1(lenLine)));
                     c->disconnectFromHost();
                     return;
                 }
@@ -319,7 +319,7 @@ void QtHelloServer::onNewConnection() {
                 QJsonParseError parseError;
                 QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
                 if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-                    dbg(QString::fromLatin1("[injectdll] Invalid JSON: %1\n").arg(parseError.errorString()));
+                    dbg(QString::fromLatin1("[injected] Invalid JSON: %1\n").arg(parseError.errorString()));
                     c->disconnectFromHost();
                     return;
                 }
@@ -328,7 +328,7 @@ void QtHelloServer::onNewConnection() {
                 int reqId = req.value("id").toInt(-1);
                 QString method = req.value("method").toString();
 
-                dbg(QString::fromLatin1("[injectdll] Request: id=%1, method=%2\n").arg(reqId).arg(method));
+                dbg(QString::fromLatin1("[injected] Request: id=%1, method=%2\n").arg(reqId).arg(method));
 
                 if (method == "ping") {
                     handlePing(c, reqId);
@@ -594,12 +594,12 @@ void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int 
 
     // 1) QGraphicsItem
     if (QGraphicsItem* parentGI = gitemForId(parentId)) {
-        dbg(QString::fromLatin1("[injectdll] handleElementsChildren parentId %1 - QGraphicsItem branch\n")
+        dbg(QString::fromLatin1("[injected] handleElementsChildren parentId %1 - QGraphicsItem branch\n")
                 .arg(parentId));
         const auto kids = parentGI->childItems();
         for (QGraphicsItem* ch : kids) {
             if (!ch) continue;
-            dbg(QString::fromLatin1("[injectdll] handleElementsChildren parentId %1 - QGraphicsItem branch add child\n")
+            dbg(QString::fromLatin1("[injected] handleElementsChildren parentId %1 - QGraphicsItem branch add child\n")
                 .arg(parentId));
             out.push_back(summarizeGraphicsItem(ch));
         }
@@ -609,7 +609,7 @@ void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int 
 
     // 2) QObject
     if (QObject* parent = objectForId(parentId)) {
-        dbg(QString::fromLatin1("[injectdll] handleElementsChildren parentId %1 - QObject branch\n")
+        dbg(QString::fromLatin1("[injected] handleElementsChildren parentId %1 - QObject branch\n")
                 .arg(parentId));
         QSet<QObject*> seen; // avoid duplicates when an object appears through multiple paths
 
@@ -617,7 +617,7 @@ void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int 
         if (QWidget* pw = qobject_cast<QWidget*>(parent)) {
             const auto kids = pw->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
             for (QWidget* w : kids) {
-                dbg(QString::fromLatin1("[injectdll] handleElementsChildren parentId %1 - QGraphicsItem branch add QWidget child\n")
+                dbg(QString::fromLatin1("[injected] handleElementsChildren parentId %1 - QGraphicsItem branch add QWidget child\n")
                     .arg(parentId));
                 if (!w) continue;
                 out.push_back(summarizeObject(w));
@@ -626,15 +626,15 @@ void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int 
 
             // QWidget might be a QGraphicsView
             if (QGraphicsView* view = qobject_cast<QGraphicsView*>(pw)) {
-                dbg(QString::fromLatin1("[injectdll] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView\n")
+                dbg(QString::fromLatin1("[injected] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView\n")
                     .arg(parentId));
                 if (QGraphicsScene* sc = view->scene()) {
-                    dbg(QString::fromLatin1("[injectdll] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView has scene\n")
+                    dbg(QString::fromLatin1("[injected] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView has scene\n")
                     .arg(parentId));
                     // Only top-level items (no parentItem)
                     const auto items = sc->items(Qt::SortOrder::AscendingOrder);
                     for (QGraphicsItem* gi : items) {
-                        dbg(QString::fromLatin1("[injectdll] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView has scene add child\n")
+                        dbg(QString::fromLatin1("[injected] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView has scene add child\n")
                     .arg(parentId));
                         if (!gi || gi->parentItem()) continue;
                         out.push_back(summarizeGraphicsItem(gi));
@@ -645,7 +645,7 @@ void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int 
 
         // 2.b) QWindow
         if (QWindow* pwin = qobject_cast<QWindow*>(parent)) {
-            dbg(QString::fromLatin1("[injectdll] handleElementsChildren parentId %1 - QWindow branch\n")
+            dbg(QString::fromLatin1("[injected] handleElementsChildren parentId %1 - QWindow branch\n")
                 .arg(parentId));
             const QObjectList kids = pwin->children();
             for (QObject* ch : kids) {
@@ -673,7 +673,7 @@ void QtHelloServer::handleElementInfo(QTcpSocket* sock, int requestId, int id) {
 
     // 1) QGraphicsView
     if (QGraphicsItem* gi = gitemForId(id)) {
-        dbg(QString::fromLatin1("[injectdll] handleElementInfo id %1 - summarizeGraphicsItem branch\n")
+        dbg(QString::fromLatin1("[injected] handleElementInfo id %1 - summarizeGraphicsItem branch\n")
                 .arg(id));
         resp["result"] = summarizeGraphicsItem(gi);
         sendJson(sock, resp);
@@ -682,7 +682,7 @@ void QtHelloServer::handleElementInfo(QTcpSocket* sock, int requestId, int id) {
 
     // 2) QObject
     if (QObject* obj = objectForId(id)) {
-        dbg(QString::fromLatin1("[injectdll] handleElementInfo id %1 - summarizeObject branch\n")
+        dbg(QString::fromLatin1("[injected] handleElementInfo id %1 - summarizeObject branch\n")
                 .arg(id));
         resp["result"] = summarizeObject(obj);
         sendJson(sock, resp);
@@ -746,7 +746,7 @@ QJsonObject QtHelloServer::summarizeGraphicsItem(QGraphicsItem* gi) {
 void QtHelloServer::handleElementClick(QTcpSocket* sock, int requestId, int id) {
     QJsonObject resp; resp["id"] = requestId;
 
-    dbg(QString::fromLatin1("[injectdll] handleElementClick id %1\n")
+    dbg(QString::fromLatin1("[injected] handleElementClick id %1\n")
                 .arg(id));
 
     auto ok = [&]() {
