@@ -34,7 +34,6 @@ Link to PyPi: <https://pypi.org/project/injected/>
 
   * Python >= 3.7
   * pywin32 >= 306
-  * six >= 1.16.0
 
 ### For development purpose
 

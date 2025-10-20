@@ -1,2 +1,5 @@
+python >= 3.7
+pywin32 >= 306
 setuptools >= 65.5.1
 wheel >= 0.38.4
+cmake >= 3.26.3

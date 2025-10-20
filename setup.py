@@ -4,7 +4,6 @@ import os
 import shutil
 import subprocess
 from setuptools import setup, find_packages
-from setuptools.dist import Distribution
 import sys
 
 
@@ -43,13 +42,6 @@ for arch in arch_names_map:
                     os.makedirs(os.path.dirname(dest_file_path), exist_ok=True)
                     shutil.copy(src_file_path, dest_file_path)
 
-
-# mark the package is not pure Python code
-class BinaryDistribution(Distribution):
-    def is_pure(self):
-        return False
-
-
 setup(name='injected',
       version='0.0.1',
       description='A set of Python modules to inject DLls into applications for the Microsoft Windows',
@@ -84,6 +76,6 @@ It allows to inject DLls into applications for the Microsoft Windows.
           'Topic :: Software Development :: Testing',
           'Topic :: Software Development :: User Interfaces'
       ],
-      install_requires=['six', 'pywin32'],
+      install_requires=['pywin32'],
       python_requires='>=3.7',
       )

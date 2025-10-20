@@ -1,5 +1,4 @@
 import json
-import six
 
 from .injector import Injector
 from .channel import Pipe
@@ -47,8 +46,7 @@ class Singleton(type):
         return cls._instances[cls]
 
 
-@six.add_metaclass(Singleton)
-class ConnectionManager(object):
+class ConnectionManager(object, metaclass=Singleton):
     def __init__(self):
         self._pipes = {}
 

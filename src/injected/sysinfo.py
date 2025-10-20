@@ -68,7 +68,7 @@ def is64_bitprocess(process_id):
     if is_x64_os():
         phndl = win32api.OpenProcess(win32con.MAXIMUM_ALLOWED, 0, process_id)
         if not phndl:
-            raise OSError()
+            raise OSError(f'OpenProcess is failed for PID = {process_id}')
         is32 = win32process.IsWow64Process(phndl)
 
     return not is32
