@@ -1,8 +1,10 @@
 import json
+import logging
 
 from .injector import Injector
 from .channel import Pipe
-from .actionlogger import ActionLogger
+
+logger = logging.getLogger(__package__)
 
 # backend exit codes enum
 OK = 0
@@ -59,10 +61,10 @@ class ConnectionManager(object, metaclass=Singleton):
         pipe_name = 'process_{}'.format(pid)
         pipe = Pipe(pipe_name)
         if pipe.connect(n_attempts=1):
-            ActionLogger().log('Pipe {} found, looks like dll has been injected already'.format(pipe_name))
+            logger.info('Pipe {} found, looks like dll has been injected already'.format(pipe_name))
             return pipe
         else:
-            ActionLogger().log('Pipe {} not found, injecting dll to the process'.format(pipe_name))
+            logger.info('Pipe {} not found, injecting dll to the process'.format(pipe_name))
             Injector(pid, 'dotnet', 'bootstrap')
             pipe.connect()
             return pipe
