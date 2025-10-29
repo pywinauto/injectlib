@@ -31,7 +31,7 @@ jobs:
         cmake --build ./build64 --target install --config ${{env.BUILD_TYPE}}
       
     - name: Collecting artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: dotnet_bin
         path: backends/dotnet/bin
