@@ -39,7 +39,7 @@ class Pipe(object):
                 break
             except pywintypes.error as e:
                 if e.args[0] == winerror.ERROR_FILE_NOT_FOUND:
-                    logger.info('Attempt {}/{}: failed to connect to the pipe {}'.format(i + 1, n_attempts,
+                    logger.warning('Attempt {}/{}: failed to connect to the pipe {}'.format(i + 1, n_attempts,
                                                                                                 self.name))
                     time.sleep(delay)
                 else:

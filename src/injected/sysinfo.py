@@ -8,15 +8,6 @@ import win32process
 import win32api
 import win32con
 
-try:
-    # Disable 'INFO' logs from comtypes
-    log = logging.getLogger('comtypes')
-    log.setLevel('WARNING')
-
-    UIA_support = True
-except ImportError:
-    UIA_support = False
-
 
 def os_arch():
     architecture_map = {
@@ -62,11 +53,10 @@ def is64_bitprocess(process_id):
     Always return False for x86.
     """
 
-    is32 = True
     if is_x64_os():
         phndl = win32api.OpenProcess(win32con.MAXIMUM_ALLOWED, 0, process_id)
         if not phndl:
             raise OSError(f'OpenProcess is failed for PID = {process_id}')
-        is32 = win32process.IsWow64Process(phndl)
+        return not win32process.IsWow64Process(phndl)
 
-    return not is32
+    return False
