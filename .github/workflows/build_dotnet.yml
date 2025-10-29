@@ -19,9 +19,9 @@ jobs:
       working-directory: ${{github.workspace}}/backends/dotnet
       run: |
         mkdir build32
-        cmake  -G "Visual Studio 16 2019" -A Win32 -B ${{github.workspace}}/backends/dotnet/build32
+        cmake  -G "Visual Studio 17 2022" -A Win32 -B ${{github.workspace}}/backends/dotnet/build32
         mkdir build64
-        cmake  -G "Visual Studio 16 2019" -A x64 -B ${{github.workspace}}/backends/dotnet/build64
+        cmake  -G "Visual Studio 17 2022" -A x64 -B ${{github.workspace}}/backends/dotnet/build64
         
 
     - name: Build
