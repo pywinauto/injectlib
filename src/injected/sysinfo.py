@@ -3,7 +3,6 @@ import sys
 import os
 import platform
 import ctypes
-import logging
 import win32process
 import win32api
 import win32con
