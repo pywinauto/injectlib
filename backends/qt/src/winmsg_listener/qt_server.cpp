@@ -1,22 +1,18 @@
 #include "qt_server.h"
+#include "pipe_server.h"
 
-#include <QTcpServer>
-#include <QTcpSocket>
-#include <QJsonDocument>
-#include <QJsonObject>
 #include <QJsonArray>
 #include <QCoreApplication>
 #include <QAbstractEventDispatcher>
 #include <QMetaObject>
+#include <QMetaType>
 #include <QTimer>
 #include <QThread>
-#include <QByteArray>
 #include <QScreen>
 #include <QGuiApplication>
 #include <QApplication>
 #include <QWidget>
 #include <QWindow>
-#include <windows.h>
 #include <QAbstractButton>
 #include <QLineEdit>
 #include <QComboBox>
@@ -24,13 +20,14 @@
 #include <QRadioButton>
 #include <QLabel>
 #include <QTabWidget>
+#include <QTabBar>
 #include <QListView>
 #include <QTreeView>
 #include <QTableView>
 #include <QFrame>
 #include <QGraphicsView>
 #include <QGraphicsScene>
-#include <QGraphicsItem>
+#include <QGraphicsTextItem>
 #include <QPointer>
 #include <QAction>
 #include <QPlainTextEdit>
@@ -40,12 +37,44 @@
 #include <QDoubleSpinBox>
 #include <QDateTimeEdit>
 
-#include <thread>
-#include <chrono>
+#include <windows.h>
 
-// helpers
+#include <chrono>
+#include <thread>
+
 namespace {
 
+// Status codes
+constexpr int OK = 0;
+constexpr int PARSE_ERROR = 1;
+constexpr int UNSUPPORTED_ACTION = 2;
+constexpr int MISSING_PARAM = 3;
+constexpr int RUNTIME_ERROR = 4;
+constexpr int NOT_FOUND = 5;
+constexpr int INVALID_VALUE = 7;
+
+// --------------- Response handlers----------------
+QJsonObject reply_ok() {
+    QJsonObject reply;
+    reply["status_code"] = OK;
+    return reply;
+}
+
+QJsonObject reply_ok(const char* key, const QJsonValue& value) {
+    QJsonObject reply = reply_ok();
+    reply[key] = value;
+    return reply;
+}
+
+QJsonObject reply_error(int status_code, const QString& message) {
+    QJsonObject reply;
+    reply["status_code"] = status_code;
+    reply["message"] = message;
+    return reply;
+}
+// ---------------------------------------------------------------
+
+// --------------- Utility functions ---------------
 void dbg(const QString& s) {
     OutputDebugStringW(reinterpret_cast<const wchar_t*>(s.utf16()));
 }
@@ -56,19 +85,6 @@ int read_env_int(const wchar_t* name, int def_val) {
     if (n == 0 || n >= (DWORD)(sizeof(buf) / sizeof(buf[0])))
         return def_val;
     return _wtoi(buf);
-}
-
-int clamp_int(int v, int lo, int hi) {
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-}
-
-void send_json(QTcpSocket* sock, const QJsonObject& obj) {
-    QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
-    QByteArray frame = QByteArray::number(payload.size()) + "\n" + payload;
-    sock->write(frame);
-    sock->flush();
 }
 
 bool wait_for_gui_loop(int total_ms, int poll_ms) {
@@ -88,6 +104,7 @@ QJsonArray rect_to_array(const QRect& r) {
     return QJsonArray{ r.x(), r.y(), r.width(), r.height() };
 }
 
+// map Qt class to pywinauto-friendly control type string
 QString control_type_for(QObject* obj) {
     if (!obj) return QStringLiteral("Object");
 
@@ -132,19 +149,22 @@ bool setQObjectTextOrValue(QObject* obj, const QString& text) {
     }
 
     if (auto cb = qobject_cast<QComboBox*>(obj)) {
-        if (cb->isEditable())
-            QMetaObject::invokeMethod(cb, [cb, text]() { cb->setEditText(text); }, Qt::QueuedConnection);
-            return true;
+        if (!cb->isEditable()) return false;
+        QMetaObject::invokeMethod(cb, [cb, text]() { cb->setEditText(text); }, Qt::QueuedConnection);
+        return true;
     }
 
     if (auto sp = qobject_cast<QSpinBox*>(obj)) {
-        bool ok = false; int v = text.toInt(&ok);
+        bool ok = false;
+        int v = text.toInt(&ok);
         if (!ok) return false;
         QMetaObject::invokeMethod(sp, [sp, v]() { sp->setValue(v); }, Qt::QueuedConnection);
         return true;
     }
+
     if (auto dsp = qobject_cast<QDoubleSpinBox*>(obj)) {
-        bool ok = false; double v = text.toDouble(&ok);
+        bool ok = false;
+        double v = text.toDouble(&ok);
         if (!ok) return false;
         QMetaObject::invokeMethod(dsp, [dsp, v]() { dsp->setValue(v); }, Qt::QueuedConnection);
         return true;
@@ -156,6 +176,7 @@ bool setQObjectTextOrValue(QObject* obj, const QString& text) {
         QMetaObject::invokeMethod(dt, [dt, dtv]() { dt->setDateTime(dtv); }, Qt::QueuedConnection);
         return true;
     }
+
     if (auto de = qobject_cast<QDateEdit*>(obj)) {
         QDate dv = QDate::fromString(text, Qt::ISODate);
         if (!dv.isValid()) dv = QDate::fromString(text, de->displayFormat());
@@ -163,17 +184,16 @@ bool setQObjectTextOrValue(QObject* obj, const QString& text) {
         QMetaObject::invokeMethod(de, [de, dv]() { de->setDate(dv); }, Qt::QueuedConnection);
         return true;
     }
-    if (auto te2 = qobject_cast<QTimeEdit*>(obj)) {
+
+    if (auto tme = qobject_cast<QTimeEdit*>(obj)) {
         QTime tv = QTime::fromString(text, Qt::ISODate);
-        if (!tv.isValid()) tv = QTime::fromString(text, te2->displayFormat());
+        if (!tv.isValid()) tv = QTime::fromString(text, tme->displayFormat());
         if (!tv.isValid()) return false;
-        QMetaObject::invokeMethod(te2, [te2, tv]() { te2->setTime(tv); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(tme, [tme, tv]() { tme->setTime(tv); }, Qt::QueuedConnection);
         return true;
     }
-    // Try common methods
-    if (QMetaObject::invokeMethod(obj, "setText", Qt::QueuedConnection, Q_ARG(QString, text))) return true;
 
-    return false;
+    return QMetaObject::invokeMethod(obj, "setText", Qt::QueuedConnection, Q_ARG(QString, text));
 }
 
 } // namespace
@@ -190,29 +210,14 @@ QtHelloServer* QtHelloServer::instance() {
 }
 
 QtHelloServer::QtHelloServer(QObject* parent)
-    : QObject(parent),
-      m_server(nullptr),
-      m_bindAddr(QHostAddress::LocalHost),
-      m_port(0)
+    : QObject(parent)
 {
-    // QTcpServer is created in start() on the GUI thread.
+    // Ensure that QJsonObject can be used in queued connections
+    qRegisterMetaType<QJsonObject>("QJsonObject");
 }
 
 bool QtHelloServer::isRunning() const noexcept {
-    return (m_server && m_server->isListening());
-}
-
-quint16 QtHelloServer::port() const noexcept { return m_port; }
-QHostAddress QtHelloServer::bindAddress() const noexcept { return m_bindAddr; }
-
-bool QtHelloServer::waitForQCoreApp(int totalMs, int pollMs) {
-    // Keep this for compatibility, but bootstrap() uses wait_for_gui_loop() below.
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(totalMs);
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (QCoreApplication::instance() != NULL) return true;
-        std::this_thread::sleep_for(std::chrono::milliseconds(pollMs));
-    }
-    return false;
+    return m_pipeServer && m_pipeServer->isRunning();
 }
 
 void QtHelloServer::bootstrap() {
@@ -231,9 +236,7 @@ void QtHelloServer::bootstrap() {
     if (srv->thread() != app->thread())
         srv->moveToThread(app->thread());
 
-    dbg(QString::fromLatin1("[injectlib] GUI loop ready. Queueing server start...\n"));
-
-    // Qt5-safe: queue onto the receiver's thread
+    dbg(QString::fromLatin1("[injectlib] GUI loop ready. Queueing pipe server start...\n"));
     QTimer::singleShot(0, srv, SLOT(start()));
 }
 
@@ -245,152 +248,82 @@ void QtHelloServer::shutdown() {
     }
 }
 
-// Create and start the TCP server on the GUI thread
 void QtHelloServer::start() {
-    dbg(QString::fromLatin1("[injectlib] start() entered on thread %1\n")
-        .arg(reinterpret_cast<qulonglong>(QThread::currentThreadId())));
-
     if (isRunning()) {
-        dbg(QString::fromLatin1("[injectlib] Already running on %1:%2\n")
-                .arg(m_bindAddr.toString()).arg(m_port));
+        dbg(QString::fromLatin1("[injectlib] Qt pipe server already running.\n"));
         return;
     }
 
-    if (!m_server) {
-        m_server = new QTcpServer(this);
-        connect(m_server, &QTcpServer::newConnection,
-                this, &QtHelloServer::onNewConnection);
-    }
-
-    int raw = read_env_int(L"QT_INJECTED_SERVER_PORT", 5555);
-    quint16 requestedPort = static_cast<quint16>(clamp_int(raw, 1, 65535));
-
-    if (!m_server->listen(m_bindAddr, requestedPort)) {
-        const QString err = m_server->errorString();
-        dbg(QString::fromLatin1("[injectlib] listen(%1:%2) FAILED: %3\n")
-                .arg(m_bindAddr.toString()).arg(requestedPort).arg(err));
-        m_port = 0;
-        return;
-    }
-
-    m_port = m_server->serverPort();
-    dbg(QString::fromLatin1("[injectlib] Server started on %1:%2 (thread %3)\n")
-            .arg(m_bindAddr.toString()).arg(m_port)
-            .arg(reinterpret_cast<qulonglong>(QThread::currentThreadId())));
-    emit started(m_port);
+    const QString pipeName = QStringLiteral("process_%1").arg(QCoreApplication::applicationPid());
+    m_pipeServer = std::make_unique<PipeServer>(pipeName, [this](const QJsonObject& request) {
+        return processRequestThreadSafe(request);
+    });
+    m_pipeServer->start();
+    dbg(QString::fromLatin1("[injectlib] Qt pipe server started: %1\n").arg(pipeName));
+    emit started();
 }
 
 void QtHelloServer::stop() {
-    if (!m_server || !m_server->isListening())
+    if (!m_pipeServer)
         return;
 
-    m_server->close();
-    m_port = 0;
-    dbg(QString::fromLatin1("[injectlib] Server stopped.\n"));
+    m_pipeServer->stop();
+    m_pipeServer.reset();
+    dbg(QString::fromLatin1("[injectlib] Qt pipe server stopped.\n"));
     emit stopped();
 }
 
-void QtHelloServer::onNewConnection() {
-    while (m_server->hasPendingConnections()) {
-        QTcpSocket* c = m_server->nextPendingConnection();
+QJsonObject QtHelloServer::processRequestThreadSafe(const QJsonObject& request) {
+    if (QThread::currentThread() == thread())
+        return processRequest(request);
 
-        dbg(QString::fromLatin1("[injectlib] New connection (sock=%1)\n")
-                .arg(reinterpret_cast<qulonglong>(c)));
+    QJsonObject reply;
+    // run on Qt thread and block until it returns
+    bool invoked = QMetaObject::invokeMethod(this,
+                                             "processRequest",
+                                             Qt::BlockingQueuedConnection,
+                                             Q_RETURN_ARG(QJsonObject, reply),
+                                             Q_ARG(QJsonObject, request));
+    if (!invoked)
+        return reply_error(RUNTIME_ERROR, QStringLiteral("Could not dispatch request to Qt thread"));
+    return reply;
+}
 
-        connect(c, &QTcpSocket::disconnected, c, &QObject::deleteLater);
+QJsonObject QtHelloServer::processRequest(const QJsonObject& request) {
+    const QString action = request.value("action").toString();
 
-        // Reply when data arrives
-        connect(c, &QTcpSocket::readyRead, this, [this, c]() {
-            while (c->canReadLine()) {
-                // Read length prefix line
-                QByteArray lenLine = c->readLine().trimmed();
-                bool ok = false;
-                int length = lenLine.toInt(&ok);
-                if (!ok || length <= 0) {
-                    dbg(QString::fromLatin1("[injectlib] Invalid frame length: '%1'\n").arg(QString::fromLatin1(lenLine)));
-                    c->disconnectFromHost();
-                    return;
-                }
-
-                // Read payload of declared length
-                QByteArray payload = c->read(length);
-
-                // Parse JSON
-                QJsonParseError parseError;
-                QJsonDocument doc = QJsonDocument::fromJson(payload, &parseError);
-                if (parseError.error != QJsonParseError::NoError || !doc.isObject()) {
-                    dbg(QString::fromLatin1("[injectlib] Invalid JSON: %1\n").arg(parseError.errorString()));
-                    c->disconnectFromHost();
-                    return;
-                }
-
-                QJsonObject req = doc.object();
-                int reqId = req.value("id").toInt(-1);
-                QString method = req.value("method").toString();
-
-                dbg(QString::fromLatin1("[injectlib] Request: id=%1, method=%2\n").arg(reqId).arg(method));
-
-                if (method == "ping") {
-                    handlePing(c, reqId);
-                } else if (method == "app.info") {
-                    handleAppInfo(c, reqId);
-                } else if (method == "elements.roots") {
-                    handleElementsRoots(c, reqId);
-                } else if (method == "elements.children") {
-                    // Expect: { "id": X, "method": "elements.children", "params": { "id": <parentId> } }
-                    const QJsonObject params = req.value("params").toObject();
-                    const int parentId = params.value("id").toInt(0);
-                    handleElementsChildren(c, reqId, parentId);
-                } else if (method == "elements.info") {
-                    // Expect: { "id": X, "method": "elements.info", "params": { "id": <int> } }
-                    const QJsonObject params = req.value("params").toObject();
-                    const int targetId = params.value("id").toInt(0);
-                    handleElementInfo(c, reqId, targetId);
-                } else if (method == "elements.click") {
-                    // Expect: { "id": X, "method": "elements.click", "params": { "id": <int> } }
-                    const QJsonObject params = req.value("params").toObject();
-                    const int targetId = params.value("id").toInt(0);
-                    handleElementClick(c, reqId, targetId);
-                } else if (method == "elements.setText") {
-                    // Expect: { "id": X, "method": "elements.setText", "params": { "id": <int>, "text": "string" } }
-                    const QJsonObject params = req.value("params").toObject();
-                    const int targetId = params.value("id").toInt(0);
-                    const QString text  = params.value("text").toString();
-                    handleElementSetText(c, reqId, targetId, text);
-                } else {
-                    QJsonObject error;
-                    error["error"] = QStringLiteral("Unknown method");
-                    QJsonObject resp;
-                    resp["id"] = reqId;
-                    resp["result"] = error;
-                    send_json(c, resp);
-                }
-            }
-        });
+    if (action == QStringLiteral("Ping"))
+        return handlePing();
+    if (action == QStringLiteral("GetAppInfo"))
+        return handleAppInfo();
+    if (action == QStringLiteral("GetRoots"))
+        return handleElementsRoots();
+    if (action == QStringLiteral("GetChildren"))
+        return handleElementsChildren(request.value("element_id").toInt(0));
+    if (action == QStringLiteral("GetElementInfo"))
+        return handleElementInfo(request.value("element_id").toInt(0));
+    if (action == QStringLiteral("Click"))
+        return handleElementClick(request.value("element_id").toInt(0));
+    if (action == QStringLiteral("SetText")) {
+        if (!request.contains("text"))
+            return reply_error(MISSING_PARAM, QStringLiteral("Missing text"));
+        return handleElementSetText(request.value("element_id").toInt(0), request.value("text").toString());
     }
+
+    if (action.isEmpty())
+        return reply_error(PARSE_ERROR, QStringLiteral("Missing action"));
+    return reply_error(UNSUPPORTED_ACTION, QStringLiteral("Unsupported action: %1").arg(action));
 }
 
-void QtHelloServer::sendJson(QTcpSocket* sock, const QJsonObject& obj) {
-    QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
-    QByteArray frame = QByteArray::number(payload.size()) + "\n" + payload;
-    sock->write(frame);
-    sock->flush();
-}
-
-void QtHelloServer::handlePing(QTcpSocket* sock, int requestId) {
+QJsonObject QtHelloServer::handlePing() {
     QJsonObject result;
     result["ok"] = true;
     result["pid"] = QCoreApplication::applicationPid();
     result["qt_version"] = QString::fromLatin1(qVersion());
-
-    QJsonObject response;
-    response["id"] = requestId;
-    response["result"] = result;
-
-    send_json(sock, response);
+    return reply_ok("value", result);
 }
 
-void QtHelloServer::handleAppInfo(QTcpSocket* sock, int requestId) {
+QJsonObject QtHelloServer::handleAppInfo() {
     QJsonObject result;
 
     // Basic app/process info
@@ -420,13 +353,7 @@ void QtHelloServer::handleAppInfo(QTcpSocket* sock, int requestId) {
     if (auto* pri = QGuiApplication::primaryScreen()) {
         result["primary_screen"] = pri->name();
     }
-
-    // Build response
-    QJsonObject resp;
-    resp["id"]     = requestId;
-    resp["result"] = result;
-
-    sendJson(sock, resp);
+    return reply_ok("value", result);
 }
 
 int QtHelloServer::ensureIdFor(QObject* obj) {
@@ -499,7 +426,7 @@ QJsonObject QtHelloServer::summarizeTopLevel(QObject* obj) {
     return j;
 }
 
-void QtHelloServer::handleElementsRoots(QTcpSocket* sock, int requestId) {
+QJsonObject QtHelloServer::handleElementsRoots() {
     QJsonArray arr;
 
     // QWidget top-levels
@@ -516,10 +443,7 @@ void QtHelloServer::handleElementsRoots(QTcpSocket* sock, int requestId) {
         arr.push_back(summarizeTopLevel(win));
     }
 
-    QJsonObject resp;
-    resp["id"]     = requestId;
-    resp["result"] = arr;
-    sendJson(sock, resp);
+    return reply_ok("value", arr);
 }
 
 QObject* QtHelloServer::objectForId(int id) const {
@@ -556,7 +480,7 @@ QJsonObject QtHelloServer::summarizeObject(QObject* obj) {
         j["rect"]         = rect_to_array(gr);
         j["visible"]      = w->isVisible();
         j["enabled"]      = w->isEnabled();
-        j["auto_id"] = w->objectName();
+        j["auto_id"]      = w->objectName();
         j["pid"] = static_cast<qint64>(QCoreApplication::applicationPid());
         return j;
     }
@@ -567,7 +491,7 @@ QJsonObject QtHelloServer::summarizeObject(QObject* obj) {
         j["id"] = id;
         j["name"] = win->title();
         j["class"] = win->metaObject()->className();
-        j["control_type"] = control_type_for(win); 
+        j["control_type"] = control_type_for(win);
         j["rect"] = rect_to_array(fr);
         j["visible"] = win->isVisible();
         j["enabled"] = true;
@@ -585,40 +509,32 @@ QJsonObject QtHelloServer::summarizeObject(QObject* obj) {
     j["rect"]         = rect_to_array(QRect());
     j["visible"]      = true;
     j["enabled"]      = true;
+    j["auto_id"]      = obj->objectName();
     j["pid"] = static_cast<qint64>(QCoreApplication::applicationPid());
     return j;
 }
 
-void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int parentId) {
+QJsonObject QtHelloServer::handleElementsChildren(int parentId) {
     QJsonArray out;
 
     // 1) QGraphicsItem
     if (QGraphicsItem* parentGI = gitemForId(parentId)) {
-        dbg(QString::fromLatin1("[injectlib] handleElementsChildren parentId %1 - QGraphicsItem branch\n")
-                .arg(parentId));
         const auto kids = parentGI->childItems();
         for (QGraphicsItem* ch : kids) {
             if (!ch) continue;
-            dbg(QString::fromLatin1("[injectlib] handleElementsChildren parentId %1 - QGraphicsItem branch add child\n")
-                .arg(parentId));
             out.push_back(summarizeGraphicsItem(ch));
         }
-        QJsonObject resp; resp["id"] = requestId; resp["result"] = out; sendJson(sock, resp);
-        return;
+        return reply_ok("value", out);
     }
 
     // 2) QObject
     if (QObject* parent = objectForId(parentId)) {
-        dbg(QString::fromLatin1("[injectlib] handleElementsChildren parentId %1 - QObject branch\n")
-                .arg(parentId));
         QSet<QObject*> seen; // avoid duplicates when an object appears through multiple paths
 
         // 2.a) QWidget
         if (QWidget* pw = qobject_cast<QWidget*>(parent)) {
             const auto kids = pw->findChildren<QWidget*>(QString(), Qt::FindDirectChildrenOnly);
             for (QWidget* w : kids) {
-                dbg(QString::fromLatin1("[injectlib] handleElementsChildren parentId %1 - QGraphicsItem branch add QWidget child\n")
-                    .arg(parentId));
                 if (!w) continue;
                 out.push_back(summarizeObject(w));
                 seen.insert(w);
@@ -626,16 +542,10 @@ void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int 
 
             // QWidget might be a QGraphicsView
             if (QGraphicsView* view = qobject_cast<QGraphicsView*>(pw)) {
-                dbg(QString::fromLatin1("[injectlib] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView\n")
-                    .arg(parentId));
                 if (QGraphicsScene* sc = view->scene()) {
-                    dbg(QString::fromLatin1("[injectlib] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView has scene\n")
-                    .arg(parentId));
                     // Only top-level items (no parentItem)
                     const auto items = sc->items(Qt::SortOrder::AscendingOrder);
                     for (QGraphicsItem* gi : items) {
-                        dbg(QString::fromLatin1("[injectlib] handleElementsChildren parentId %1 - QGraphicsItem branch can cast to QGraphicsView has scene add child\n")
-                    .arg(parentId));
                         if (!gi || gi->parentItem()) continue;
                         out.push_back(summarizeGraphicsItem(gi));
                     }
@@ -645,8 +555,6 @@ void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int 
 
         // 2.b) QWindow
         if (QWindow* pwin = qobject_cast<QWindow*>(parent)) {
-            dbg(QString::fromLatin1("[injectlib] handleElementsChildren parentId %1 - QWindow branch\n")
-                .arg(parentId));
             const QObjectList kids = pwin->children();
             for (QObject* ch : kids) {
                 if (QWindow* cw = qobject_cast<QWindow*>(ch)) {
@@ -656,45 +564,22 @@ void QtHelloServer::handleElementsChildren(QTcpSocket* sock, int requestId, int 
             }
         }
 
-        QJsonObject resp; resp["id"] = requestId; resp["result"] = out; sendJson(sock, resp);
-        return;
+        return reply_ok("value", out);
     }
 
-    // Unknown id error
-    QJsonObject resp; resp["id"] = requestId;
-    QJsonObject err;  err["code"] = -32602; err["message"] = "Invalid params: unknown id";
-    resp["error"] = err;
-    sendJson(sock, resp);
+    return reply_error(NOT_FOUND, QStringLiteral("Invalid params: unknown id"));
 }
 
-void QtHelloServer::handleElementInfo(QTcpSocket* sock, int requestId, int id) {
-    QJsonObject resp;
-    resp["id"] = requestId;
-
+QJsonObject QtHelloServer::handleElementInfo(int id) {
     // 1) QGraphicsView
-    if (QGraphicsItem* gi = gitemForId(id)) {
-        dbg(QString::fromLatin1("[injectlib] handleElementInfo id %1 - summarizeGraphicsItem branch\n")
-                .arg(id));
-        resp["result"] = summarizeGraphicsItem(gi);
-        sendJson(sock, resp);
-        return;
-    }
+    if (QGraphicsItem* gi = gitemForId(id))
+        return reply_ok("value", summarizeGraphicsItem(gi));
 
     // 2) QObject
-    if (QObject* obj = objectForId(id)) {
-        dbg(QString::fromLatin1("[injectlib] handleElementInfo id %1 - summarizeObject branch\n")
-                .arg(id));
-        resp["result"] = summarizeObject(obj);
-        sendJson(sock, resp);
-        return;
-    }
+    if (QObject* obj = objectForId(id))
+        return reply_ok("value", summarizeObject(obj));
 
-    QJsonObject err;
-    err["code"] = -32602;
-    err["message"] = QStringLiteral("Invalid params: unknown id");
-    resp["error"] = err;
-    sendJson(sock, resp);
-    return;
+    return reply_error(NOT_FOUND, QStringLiteral("Invalid params: unknown id"));
 }
 
 int QtHelloServer::ensureIdForGItem(QGraphicsItem* it) {
@@ -740,26 +625,12 @@ QJsonObject QtHelloServer::summarizeGraphicsItem(QGraphicsItem* gi) {
     j["rect"] = rect_to_array(rScreen);
     j["visible"] = gi->isVisible();
     j["enabled"] = true; // no enabled state for plain QGraphicsItem
+    j["auto_id"] = QString();
+    j["pid"] = static_cast<qint64>(QCoreApplication::applicationPid());
     return j;
 }
 
-void QtHelloServer::handleElementClick(QTcpSocket* sock, int requestId, int id) {
-    QJsonObject resp; resp["id"] = requestId;
-
-    dbg(QString::fromLatin1("[injectlib] handleElementClick id %1\n")
-                .arg(id));
-
-    auto ok = [&]() {
-        QJsonObject r; r["ok"] = true;
-        resp["result"] = r;
-        sendJson(sock, resp);
-    };
-    auto err = [&](int code, const QString& msg) {
-        QJsonObject e; e["code"] = code; e["message"] = msg;
-        resp["error"] = e;
-        sendJson(sock, resp);
-    };
-
+QJsonObject QtHelloServer::handleElementClick(int id) {
     // 1) QGraphicsItem
     if (QGraphicsItem* gi = gitemForId(id)) {
         // Only QGraphicsObject supports signals/slots; plain QGraphicsItem has no semantic click
@@ -769,10 +640,10 @@ void QtHelloServer::handleElementClick(QTcpSocket* sock, int requestId, int id) 
                 QMetaObject::invokeMethod(go, "click", Qt::QueuedConnection) ||
                 QMetaObject::invokeMethod(go, "trigger", Qt::QueuedConnection) ||
                 QMetaObject::invokeMethod(go, "clicked", Qt::QueuedConnection);
-            if (invoked) return ok();
-            return err(-32001, "GraphicsObject has no invokable click/trigger/clicked");
+            if (invoked) return reply_ok("value", QJsonObject{{"ok", true}});
+            return reply_error(UNSUPPORTED_ACTION, QStringLiteral("GraphicsObject has no invokable click/trigger/clicked"));
         }
-        return err(-32000, "GraphicsItem is not a QObject; semantic click unsupported");
+        return reply_error(UNSUPPORTED_ACTION, QStringLiteral("GraphicsItem is not a QObject; semantic click unsupported"));
     }
 
     // 2) QObject
@@ -780,26 +651,26 @@ void QtHelloServer::handleElementClick(QTcpSocket* sock, int requestId, int id) 
         // QAction: trigger
         if (QAction* act = qobject_cast<QAction*>(obj)) {
             QTimer::singleShot(0, act, &QAction::trigger);
-            return ok();
+            return reply_ok("value", QJsonObject{{"ok", true}});
         }
         // QAbstractButton: click
         if (QAbstractButton* btn = qobject_cast<QAbstractButton*>(obj)) {
             QTimer::singleShot(0, btn, &QAbstractButton::click);
-            return ok();
+            return reply_ok("value", QJsonObject{{"ok", true}});
         }
         // QComboBox: open popup as semantic "click"
         if (QComboBox* cb = qobject_cast<QComboBox*>(obj)) {
             QTimer::singleShot(0, cb, &QComboBox::showPopup);
-            return ok();
+            return reply_ok("value", QJsonObject{{"ok", true}});
         }
         // QTabBar: switch to current tab
         if (QTabBar* tb = qobject_cast<QTabBar*>(obj)) {
             int idx = tb->currentIndex();
             if (idx >= 0) {
                 QTimer::singleShot(0, [tb, idx]() { tb->setCurrentIndex(idx); emit tb->tabBarClicked(idx); });
-                return ok();
+                return reply_ok("value", QJsonObject{{"ok", true}});
             }
-            return err(-32006, "TabBar has no current index");
+            return reply_error(INVALID_VALUE, QStringLiteral("TabBar has no current index"));
         }
 
         // Try common names
@@ -807,54 +678,41 @@ void QtHelloServer::handleElementClick(QTcpSocket* sock, int requestId, int id) 
             QMetaObject::invokeMethod(obj, "click",   Qt::QueuedConnection) ||
             QMetaObject::invokeMethod(obj, "trigger", Qt::QueuedConnection) ||
             QMetaObject::invokeMethod(obj, "clicked", Qt::QueuedConnection);
-        if (invoked) return ok();
+        if (invoked) return reply_ok("value", QJsonObject{{"ok", true}});
 
-        return err(-32008, "Unsupported object type for semantic click");
+        return reply_error(UNSUPPORTED_ACTION, QStringLiteral("Unsupported object type for semantic click"));
     }
 
     // 3) Unknown id
-    return err(-32602, "Invalid params: unknown id");
+    return reply_error(NOT_FOUND, QStringLiteral("Invalid params: unknown id"));
 }
 
-void QtHelloServer::handleElementSetText(QTcpSocket* sock, int requestId, int id, const QString& text) {
-    QJsonObject resp; resp["id"] = requestId;
-
-    auto ok = [&]() {
-        QJsonObject r; r["ok"] = true;
-        resp["result"] = r;
-        sendJson(sock, resp);
-    };
-    auto err = [&](int code, const QString& msg) {
-        QJsonObject e; e["code"] = code; e["message"] = msg;
-        resp["error"] = e;
-        sendJson(sock, resp);
-    };
-
+QJsonObject QtHelloServer::handleElementSetText(int id, const QString& text) {
     // 1) QGraphicsItem
     if (QGraphicsItem* gi = gitemForId(id)) {
         // Prefer QGraphicsObject path
         if (QGraphicsObject* go = gi->toGraphicsObject()) {
-            if (setQObjectTextOrValue(go, text)) return ok();
-            return err(-32021, "GraphicsObject has no writable text/value");
+            if (setQObjectTextOrValue(go, text)) return reply_ok("value", QJsonObject{{"ok", true}});
+            return reply_error(UNSUPPORTED_ACTION, QStringLiteral("GraphicsObject has no writable text/value"));
         }
         // Non-QObject items with text APIs
         if (auto gti = dynamic_cast<QGraphicsTextItem*>(gi)) {
             QTimer::singleShot(0, [gti, text]() { gti->setPlainText(text); });
-            return ok();
+            return reply_ok("value", QJsonObject{{"ok", true}});
         }
         if (auto sti = dynamic_cast<QGraphicsSimpleTextItem*>(gi)) {
             QTimer::singleShot(0, [sti, text]() { sti->setText(text); });
-            return ok();
+            return reply_ok("value", QJsonObject{{"ok", true}});
         }
-        return err(-32020, "GraphicsItem not text-editable");
+        return reply_error(UNSUPPORTED_ACTION, QStringLiteral("GraphicsItem not text-editable"));
     }
 
     // 2) QObject
     if (QObject* obj = objectForId(id)) {
-        if (setQObjectTextOrValue(obj, text)) return ok();
-        return err(-32010, "Unsupported object type or read-only");
+        if (setQObjectTextOrValue(obj, text)) return reply_ok("value", QJsonObject{{"ok", true}});
+        return reply_error(UNSUPPORTED_ACTION, QStringLiteral("Unsupported object type or read-only"));
     }
 
     // 3) Unknown id
-    return err(-32602, "Invalid params: unknown id");
+    return reply_error(NOT_FOUND, QStringLiteral("Invalid params: unknown id"));
 }

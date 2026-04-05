@@ -7,26 +7,25 @@ set(CMAKE_AUTOMOC ON)
 # Qt5/Qt6 compatible find_package
 find_package(QT NAMES Qt5 COMPONENTS
     Core
-    Network
     Gui
     Widgets
 REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS
     Core
-    Network
     Gui
     Widgets 
 REQUIRED)
 
 add_library(qt_srv SHARED
     dllmain.cpp
+    pipe_server.h
+    pipe_server.cpp
     qt_server.h
     qt_server.cpp
 )
 
 target_link_libraries(qt_srv PRIVATE
     Qt${QT_VERSION_MAJOR}::Core
-    Qt${QT_VERSION_MAJOR}::Network
     Qt${QT_VERSION_MAJOR}::Gui
     Qt${QT_VERSION_MAJOR}::Widgets
 )
