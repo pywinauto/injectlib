@@ -20,8 +20,22 @@ add_library(qt_srv SHARED
     dllmain.cpp
     pipe_server.h
     pipe_server.cpp
+    qt_discovery_actions.h
+    qt_discovery_actions.cpp
+    qt_element_summary.h
+    qt_element_summary.cpp
+    qt_object_store.h
+    qt_object_store.cpp
+    qt_property_actions.h
+    qt_property_actions.cpp
+    qt_replies.h
+    qt_replies.cpp
     qt_server.h
     qt_server.cpp
+    qt_utils.h
+    qt_utils.cpp
+    qt_widget_actions.h
+    qt_widget_actions.cpp
 )
 
 target_link_libraries(qt_srv PRIVATE
