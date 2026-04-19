@@ -103,7 +103,7 @@ QJsonObject summarizeTopLevel(QtObjectStore& store, QObject* object) {
         result["id"] = id;
         result["name"] = objectNameText(widget);
         result["class"] = widget->metaObject()->className();
-        result["control_type"] = controlTypeFor(widget);
+        result["control_type"] = QStringLiteral("Window");
         result["rect"] = rectToArray(frame);
         result["visible"] = widget->isVisible();
         result["enabled"] = widget->isEnabled();

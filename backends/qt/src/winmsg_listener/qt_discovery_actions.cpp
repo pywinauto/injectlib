@@ -12,6 +12,7 @@
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QScreen>
+#include <QSet>
 #include <QWidget>
 #include <QWindow>
 
@@ -60,19 +61,25 @@ QJsonObject handleAppInfo() {
 
 QJsonObject handleElementsRoots(QtObjectStore& store) {
     QJsonArray result;
+    QSet<QObject*> seen;
 
     // QWidget top-levels.
     const auto widgetRoots = QApplication::topLevelWidgets();
     for (QWidget* widget : widgetRoots) {
         if (!widget) continue;
         result.push_back(summarizeTopLevel(store, widget));
+        seen.insert(widget);
+        if (QWindow* window = widget->windowHandle())
+            seen.insert(window);
     }
 
     // QWindow top-levels.
     const auto windowRoots = QGuiApplication::topLevelWindows();
     for (QWindow* window : windowRoots) {
         if (!window) continue;
+        if (seen.contains(window)) continue;
         result.push_back(summarizeTopLevel(store, window));
+        seen.insert(window);
     }
 
     return replyOk("value", result);

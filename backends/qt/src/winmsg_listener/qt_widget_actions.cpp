@@ -171,7 +171,7 @@ QJsonObject handleExpand(QtObjectStore& store, int id) {
         return replyOk("value", QJsonObject{{"ok", true}});
     }
     if (auto tree = qobject_cast<QTreeView*>(object)) {
-        tree->expandAll();
+        tree->expandToDepth(0);
         return replyOk("value", QJsonObject{{"ok", true}});
     }
 
@@ -188,7 +188,11 @@ QJsonObject handleCollapse(QtObjectStore& store, int id) {
         return replyOk("value", QJsonObject{{"ok", true}});
     }
     if (auto tree = qobject_cast<QTreeView*>(object)) {
-        tree->collapseAll();
+        if (QAbstractItemModel* model = tree->model()) {
+            for (int row = 0; row < model->rowCount(); ++row)
+                tree->collapse(model->index(row, 0));
+        }
+
         return replyOk("value", QJsonObject{{"ok", true}});
     }
 
