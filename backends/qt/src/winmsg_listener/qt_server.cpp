@@ -159,9 +159,13 @@ QJsonObject QtHelloServer::processRequest(const QJsonObject& request) {
     if (action == QStringLiteral("Toggle"))
         return handleToggle(m_objectStore, request.value("element_id").toInt(0));
     if (action == QStringLiteral("Expand"))
-        return handleExpand(m_objectStore, request.value("element_id").toInt(0));
+        return handleExpand(m_objectStore, request);
     if (action == QStringLiteral("Collapse"))
-        return handleCollapse(m_objectStore, request.value("element_id").toInt(0));
+        return handleCollapse(m_objectStore, request);
+    if (action == QStringLiteral("IsExpanded"))
+        return handleIsExpanded(m_objectStore, request);
+    if (action == QStringLiteral("GetItemText"))
+        return handleGetItemText(m_objectStore, request);
     if (action == QStringLiteral("GetSelection"))
         return handleGetSelection(m_objectStore, request.value("element_id").toInt(0));
     if (action == QStringLiteral("Click"))
@@ -170,6 +174,39 @@ QJsonObject QtHelloServer::processRequest(const QJsonObject& request) {
         if (!request.contains("text"))
             return replyError(MISSING_PARAM, QStringLiteral("Missing text"));
         return handleElementSetText(m_objectStore, request.value("element_id").toInt(0), request.value("text").toString());
+    }
+    if (action == QStringLiteral("GetCellInfo")) {
+        if (!request.contains("row") || !request.contains("column"))
+            return replyError(MISSING_PARAM, QStringLiteral("Missing row or column"));
+        return handleGetCellInfo(m_objectStore,
+                                 request.value("element_id").toInt(0),
+                                 request.value("row").toInt(-1),
+                                 request.value("column").toInt(-1));
+    }
+    if (action == QStringLiteral("SelectCell")) {
+        if (!request.contains("row") || !request.contains("column"))
+            return replyError(MISSING_PARAM, QStringLiteral("Missing row or column"));
+        return handleSelectCell(m_objectStore,
+                                request.value("element_id").toInt(0),
+                                request.value("row").toInt(-1),
+                                request.value("column").toInt(-1));
+    }
+    if (action == QStringLiteral("ClickCell")) {
+        if (!request.contains("row") || !request.contains("column"))
+            return replyError(MISSING_PARAM, QStringLiteral("Missing row or column"));
+        return handleClickCell(m_objectStore,
+                               request.value("element_id").toInt(0),
+                               request.value("row").toInt(-1),
+                               request.value("column").toInt(-1));
+    }
+    if (action == QStringLiteral("SetCellValue")) {
+        if (!request.contains("row") || !request.contains("column") || !request.contains("value"))
+            return replyError(MISSING_PARAM, QStringLiteral("Missing row, column, or value"));
+        return handleSetCellValue(m_objectStore,
+                                  request.value("element_id").toInt(0),
+                                  request.value("row").toInt(-1),
+                                  request.value("column").toInt(-1),
+                                  request.value("value"));
     }
 
     if (action.isEmpty())

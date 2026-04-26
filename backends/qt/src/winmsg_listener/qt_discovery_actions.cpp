@@ -67,6 +67,7 @@ QJsonObject handleElementsRoots(QtObjectStore& store) {
     const auto widgetRoots = QApplication::topLevelWidgets();
     for (QWidget* widget : widgetRoots) {
         if (!widget) continue;
+        if (widget->windowType() == Qt::Popup) continue;
         result.push_back(summarizeTopLevel(store, widget));
         seen.insert(widget);
         if (QWindow* window = widget->windowHandle())
@@ -77,6 +78,7 @@ QJsonObject handleElementsRoots(QtObjectStore& store) {
     const auto windowRoots = QGuiApplication::topLevelWindows();
     for (QWindow* window : windowRoots) {
         if (!window) continue;
+        if (window->type() == Qt::Popup) continue;
         if (seen.contains(window)) continue;
         result.push_back(summarizeTopLevel(store, window));
         seen.insert(window);

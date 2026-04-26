@@ -70,6 +70,7 @@ QString objectValueText(QObject* object) {
     if (auto combo = qobject_cast<QComboBox*>(object)) return combo->currentText();
     if (auto label = qobject_cast<QLabel*>(object)) return label->text();
     if (auto button = qobject_cast<QAbstractButton*>(object)) return button->text();
+    if (auto groupBox = qobject_cast<QGroupBox*>(object)) return groupBox->title();
     if (auto spin = qobject_cast<QSpinBox*>(object)) return QString::number(spin->value());
     if (auto doubleSpin = qobject_cast<QDoubleSpinBox*>(object)) return QString::number(doubleSpin->value());
     if (auto slider = qobject_cast<QAbstractSlider*>(object)) return QString::number(slider->value());
