@@ -1,22 +1,17 @@
 cmake_minimum_required(VERSION 3.10)
-project(qt_srv LANGUAGES CXX)
+project(qt5_srv LANGUAGES CXX)
 
 # Make Qt's moc run automatically for files with Q_OBJECT
 set(CMAKE_AUTOMOC ON)
 
-# Qt5/Qt6 compatible find_package
-find_package(QT NAMES Qt5 COMPONENTS
-    Core
-    Gui
-    Widgets
-REQUIRED)
-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS
+# Qt5 backend
+find_package(Qt5 COMPONENTS
     Core
     Gui
     Widgets 
 REQUIRED)
 
-add_library(qt_srv SHARED
+add_library(qt5_srv SHARED
     dllmain.cpp
     pipe_server.h
     pipe_server.cpp
@@ -38,14 +33,14 @@ add_library(qt_srv SHARED
     qt_widget_actions.cpp
 )
 
-target_link_libraries(qt_srv PRIVATE
-    Qt${QT_VERSION_MAJOR}::Core
-    Qt${QT_VERSION_MAJOR}::Gui
-    Qt${QT_VERSION_MAJOR}::Widgets
+target_link_libraries(qt5_srv PRIVATE
+    Qt5::Core
+    Qt5::Gui
+    Qt5::Widgets
 )
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Optional but nice: stable DLL name
-set_target_properties(qt_srv PROPERTIES OUTPUT_NAME "qt_srv")
+set_target_properties(qt5_srv PROPERTIES OUTPUT_NAME "qt5_srv")

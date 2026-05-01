@@ -19,7 +19,7 @@ else:
     arch_names_map = { x86_cmake_arch_name: x86_package_arch_name }
 
 build_dirname = 'build_'
-build_dll_dirs = ['./backends/dotnet/', './backends/hook/', './backends/qt/']
+build_dll_dirs = ['./backends/dotnet/', './backends/hook/', './backends/qt5/']
 package_dll_dirs = ['./src/injectlib/libs/dotnet/', './src/injectlib/libs/hook/', './src/injectlib/libs/qt/']
 cmake_dirs = build_dll_dirs
 
