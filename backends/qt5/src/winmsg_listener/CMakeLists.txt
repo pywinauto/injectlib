@@ -42,5 +42,5 @@ target_link_libraries(qt5_srv PRIVATE
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Optional but nice: stable DLL name
+# stable DLL name
 set_target_properties(qt5_srv PROPERTIES OUTPUT_NAME "qt5_srv")
