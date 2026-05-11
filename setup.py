@@ -21,12 +21,13 @@ else:
 build_dirname = 'build_'
 build_dll_dirs = ['./backends/dotnet/',
                   './backends/hook/',
-                  './backends/qt5/',
-                  './backends/qt6/']
+                  './backends/qt5/']
 package_dll_dirs = ['./src/injectlib/libs/dotnet/',
                     './src/injectlib/libs/hook/',
-                    './src/injectlib/libs/qt5/',
-                    './src/injectlib/libs/qt6/']
+                    './src/injectlib/libs/qt5/']
+if is_64bit:
+    build_dll_dirs.append('./backends/qt6/')
+    package_dll_dirs.append('./src/injectlib/libs/qt6/')
 cmake_dirs = build_dll_dirs
 
 

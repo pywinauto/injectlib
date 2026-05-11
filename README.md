@@ -63,9 +63,10 @@ Link to PyPi: <https://pypi.org/project/injectlib/>
 This package compiles C++ binaries that link against **Qt 5** (>=5.15.2, <6) and **Qt 6**. Qt is not bundled and must be installed separately before building
 
 - **Windows** download options:
-  - download via [Qt Online Installer](https://www.qt.io/download) and select the MSVC 2019 64-bit component. Registration required. Installation might be banned for some countries
+  - download via [Qt Online Installer](https://www.qt.io/download) and select the MSVC components. Registration required. Only 64-bit supported. Installation might be banned for some countries.
   - via mirrors, for example, https://mirror.yandex.ru/mirrors/qt.io.
-    - Base package for Qt 5.15.2 can be found [here](https://mirror.yandex.ru/mirrors/qt.io/online/qtsdkrepository/windows_x86/desktop/qt5_5152/qt.qt5.5152.win64_msvc2019_64/5.15.2-0-202011130602qtbase-Windows-Windows_10-MSVC2019-Windows-Windows_10-X86_64.7z). No registration required.
+    - Base package for Qt 5.15.2 x64 can be found [here](https://mirror.yandex.ru/mirrors/qt.io/online/qtsdkrepository/windows_x86/desktop/qt5_5152/qt.qt5.5152.win64_msvc2019_64/5.15.2-0-202011130602qtbase-Windows-Windows_10-MSVC2019-Windows-Windows_10-X86_64.7z). No registration required.
+    - Base package for Qt 5.15.2 x86 can be found [here](https://mirror.yandex.ru/mirrors/qt.io/online/qtsdkrepository/windows_x86/desktop/qt5_5152/qt.qt5.5152.win32_msvc2019/5.15.2-0-202011130602qtbase-Windows-Windows_10-MSVC2019-Windows-Windows_10-X86.7z). No registration required.
     - Base package for Qt 6.9.3 can be found [here](https://mirror.yandex.ru/mirrors/qt.io/online/qtsdkrepository/windows_x86/desktop/qt6_693/qt6_693/qt.qt6.693.win64_msvc2022_64/6.9.3-0-202509261208qtbase-Windows-Windows_11_23H2-MSVC2022-Windows-Windows_11_23H2-X86_64.7z)
 
 Once installed, point CMake to your Qt installations by setting `CMAKE_PREFIX_PATH` and add the Qt runtime directories to `PATH`.
@@ -74,8 +75,8 @@ For example:
 
 ```bash
 # Windows (adjust version/compiler as needed)
-set CMAKE_PREFIX_PATH=C:\Qt\5.15.2\msvc2019_64;C:\Qt\6.9.1\msvc2022_64
-set PATH=C:\Qt\5.15.2\msvc2019_64\bin;C:\Qt\6.9.1\msvc2022_64\bin;%PATH%
+set CMAKE_PREFIX_PATH=C:\Qt\5.15.2\msvc2019;C:\Qt\5.15.2\msvc2019_64;C:\Qt\6.9.1\msvc2022_64
+set PATH=C:\Qt\5.15.2\msvc2019\bin;C:\Qt\5.15.2\msvc2019_64\bin;C:\Qt\6.9.1\msvc2022_64\bin;%PATH%
 ```
 
 If CMake still cannot find Qt, verify the paths contain `lib/cmake/Qt5` and `lib/cmake/Qt6` subdirectories.
