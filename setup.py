@@ -19,8 +19,14 @@ else:
     arch_names_map = { x86_cmake_arch_name: x86_package_arch_name }
 
 build_dirname = 'build_'
-build_dll_dirs = ['./backends/dotnet/', './backends/hook/', './backends/qt5/']
-package_dll_dirs = ['./src/injectlib/libs/dotnet/', './src/injectlib/libs/hook/', './src/injectlib/libs/qt/']
+build_dll_dirs = ['./backends/dotnet/',
+                  './backends/hook/',
+                  './backends/qt5/',
+                  './backends/qt6/']
+package_dll_dirs = ['./src/injectlib/libs/dotnet/',
+                    './src/injectlib/libs/hook/',
+                    './src/injectlib/libs/qt5/',
+                    './src/injectlib/libs/qt6/']
 cmake_dirs = build_dll_dirs
 
 
@@ -57,7 +63,7 @@ class BinaryDistribution(Distribution):
 
 
 setup(name='injectlib',
-      version='0.0.2',
+      version='0.0.3',
       description='A set of Python modules to inject DLLs into applications for the Microsoft Windows',
       keywords="windows gui .net inject testing test desktop dll wpf qt",
       url="https://github.com/pywinauto/injectlib",
