@@ -15,4 +15,6 @@ include src/injectlib/libs/hook/x64/pywinmsg64u.dll
 
 include src/injectlib/libs/qt5/x86/qt5_srv.dll
 include src/injectlib/libs/qt5/x64/qt5_srv.dll
+include src/injectlib/libs/qt5/x64/qt5_srv.so
 include src/injectlib/libs/qt6/x64/qt6_srv.dll
+include src/injectlib/libs/qt6/x64/qt6_srv.so

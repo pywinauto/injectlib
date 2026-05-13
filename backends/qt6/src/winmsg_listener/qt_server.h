@@ -1,13 +1,12 @@
 #pragma once
 
 #include "qt_object_store.h"
+#include "pipe_server.h"
 
 #include <QObject>
 #include <QJsonObject>
 
 #include <memory>
-
-class PipeServer;
 
 class QtHelloServer : public QObject {
     Q_OBJECT

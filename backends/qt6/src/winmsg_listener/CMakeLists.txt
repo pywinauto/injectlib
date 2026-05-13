@@ -11,8 +11,15 @@ find_package(Qt6 COMPONENTS
     Widgets 
 REQUIRED)
 
+set(QT6_SRV_PLATFORM_SOURCES)
+if(WIN32)
+    list(APPEND QT6_SRV_PLATFORM_SOURCES dllmain.cpp)
+else()
+    list(APPEND QT6_SRV_PLATFORM_SOURCES linux_entry.cpp)
+endif()
+
 add_library(qt6_srv SHARED
-    dllmain.cpp
+    ${QT6_SRV_PLATFORM_SOURCES}
     pipe_server.h
     pipe_server.cpp
     qt_discovery_actions.h
@@ -43,4 +50,4 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # stable DLL name
-set_target_properties(qt6_srv PROPERTIES OUTPUT_NAME "qt6_srv")
+set_target_properties(qt6_srv PROPERTIES OUTPUT_NAME "qt6_srv" PREFIX "")

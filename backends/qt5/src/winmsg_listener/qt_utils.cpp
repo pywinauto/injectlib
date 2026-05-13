@@ -14,7 +14,11 @@
 #include <QThread>
 #include <QTimeEdit>
 
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <cstdio>
+#endif
 
 #include <chrono>
 #include <thread>
@@ -22,15 +26,29 @@
 namespace QtBackend {
 
 void dbg(const QString& message) {
+#ifdef _WIN32
     OutputDebugStringW(reinterpret_cast<const wchar_t*>(message.utf16()));
+#else
+    fprintf(stderr, "%s", message.toUtf8().constData());
+#endif
 }
 
 int readEnvInt(const wchar_t* name, int defaultValue) {
+#ifdef _WIN32
     wchar_t buf[64];
     DWORD n = GetEnvironmentVariableW(name, buf, (DWORD)(sizeof(buf) / sizeof(buf[0])));
     if (n == 0 || n >= (DWORD)(sizeof(buf) / sizeof(buf[0])))
         return defaultValue;
     return _wtoi(buf);
+#else
+    const QString key = QString::fromWCharArray(name);
+    const QByteArray value = qgetenv(key.toLatin1().constData());
+    if (value.isEmpty())
+        return defaultValue;
+    bool ok = false;
+    const int parsed = QString::fromLatin1(value).toInt(&ok);
+    return ok ? parsed : defaultValue;
+#endif
 }
 
 bool waitForGuiLoop(int totalMs, int pollMs) {

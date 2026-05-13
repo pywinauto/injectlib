@@ -12,6 +12,7 @@ from setuptools.dist import Distribution
 x86_cmake_arch_name, x64_cmake_arch_name = 'Win32', 'x64'
 x86_package_arch_name, x64_package_arch_name = 'x86', 'x64'
 
+is_windows = sys.platform == 'win32'
 is_64bit = sys.maxsize > 2**32
 if is_64bit:
     arch_names_map = { x64_cmake_arch_name: x64_package_arch_name }
@@ -19,12 +20,16 @@ else:
     arch_names_map = { x86_cmake_arch_name: x86_package_arch_name }
 
 build_dirname = 'build_'
-build_dll_dirs = ['./backends/dotnet/',
-                  './backends/hook/',
-                  './backends/qt5/']
-package_dll_dirs = ['./src/injectlib/libs/dotnet/',
-                    './src/injectlib/libs/hook/',
-                    './src/injectlib/libs/qt5/']
+if is_windows:
+    build_dll_dirs = ['./backends/dotnet/',
+                      './backends/hook/',
+                      './backends/qt5/']
+    package_dll_dirs = ['./src/injectlib/libs/dotnet/',
+                        './src/injectlib/libs/hook/',
+                        './src/injectlib/libs/qt5/']
+else:
+    build_dll_dirs = ['./backends/qt5/']
+    package_dll_dirs = ['./src/injectlib/libs/qt5/']
 if is_64bit:
     build_dll_dirs.append('./backends/qt6/')
     package_dll_dirs.append('./src/injectlib/libs/qt6/')
@@ -42,7 +47,10 @@ class SdistWithDlls(sdist):
 
                 os.makedirs(build_dir, exist_ok=True)
 
-                subprocess.check_call(['cmake', '-B ' + build_dir, '-S ' + cmake_dir, '-A ' + arch])
+                cmake_command = ['cmake', '-B ' + build_dir, '-S ' + cmake_dir]
+                if is_windows:
+                    cmake_command.extend(['-A', arch])
+                subprocess.check_call(cmake_command)
                 subprocess.check_call(['cmake', '--build', build_dir, '--config', 'Release'])
 
         # copy DLLs to the package
@@ -50,7 +58,7 @@ class SdistWithDlls(sdist):
             for build_dll_dir, package_dll_dir in zip(build_dll_dirs, package_dll_dirs):
                 for root, _, files in os.walk(build_dll_dir + build_dirname + arch):
                     for file in files:
-                        if file.endswith('.dll'):
+                        if file.endswith(('.dll', '.so')):
                             src_file_path = os.path.join(root, file)
                             dest_file_path = os.path.join(package_dll_dir + arch_names_map.get(arch), file)
                             os.makedirs(os.path.dirname(dest_file_path), exist_ok=True)
@@ -87,7 +95,7 @@ precision and coverage than standard OS APIs like MS UI Automation API or
 Win32 API. Other use cases are potentially possible at
 your own risk according to the law and the project license.
 """,
-      platforms=['win32'],
+      platforms=['win32', 'linux'],
 
       packages=["injectlib"],
       package_dir={"": "src"},
@@ -113,7 +121,7 @@ your own risk according to the law and the project license.
           'Topic :: Software Development :: Libraries :: Python Modules',
           'Topic :: Software Development :: Testing',
       ],
-      install_requires=['pywin32'],
+      install_requires=['pywin32; platform_system=="Windows"'],
       python_requires='>=3.7',
       cmdclass={'sdist': SdistWithDlls},
       )

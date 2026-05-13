@@ -8,7 +8,11 @@
 #include <functional>
 #include <thread>
 
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <string>
+#endif
 
 class PipeServer {
 public:
@@ -33,5 +37,11 @@ private:
     std::thread m_thread;
     std::atomic<bool> m_stop{false};
     std::atomic<bool> m_running{false};
+#ifdef _WIN32
     HANDLE m_pipe{INVALID_HANDLE_VALUE};
+#else
+    int m_serverFd{-1};
+    int m_clientFd{-1};
+    std::string m_socketPath;
+#endif
 };

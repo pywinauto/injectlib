@@ -1,8 +1,12 @@
 import json
 import logging
+import sys
 
-from .injector import Injector
 from .channel import Pipe
+if sys.platform == "win32":
+    from .injector import Injector
+else:
+    from .linux_injector import LinuxInjector as Injector
 
 logger = logging.getLogger(__package__)
 
@@ -73,7 +77,9 @@ class ConnectionManager(object, metaclass=Singleton):
             # Fallback to dotnet to keep compatibility
             backend_name, dll_name = self._backend_config.get(pid, ('dotnet', 'bootstrap'))
             Injector(pid, backend_name, dll_name)
-            pipe.connect()
+            if not pipe.connect():
+                raise InjectedRuntimeError(
+                    "Injected server channel did not appear for pid {}".format(pid))
             return pipe
 
     def call_action(self, action_name, pid, **params):
