@@ -16,7 +16,10 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QPolygonF>
 #include <QProgressBar>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QRadioButton>
 #include <QCheckBox>
 #include <QTabBar>
@@ -30,7 +33,87 @@
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
+
 namespace QtBackend {
+
+QString controlTypeFor(QObject* object);
+QString objectValueText(QObject* object);
+QString objectNameText(QObject* object);
+
+namespace {
+
+bool qtQuickAvailable() {
+#ifdef Q_OS_WIN
+    return GetModuleHandleW(L"Qt5Quick.dll") != nullptr;
+#else
+    return true;
+#endif
+}
+
+bool boolProperty(QObject* object, const char* name, bool fallback) {
+    if (!object) return fallback;
+    const QVariant value = object->property(name);
+    return value.isValid() ? value.toBool() : fallback;
+}
+
+QString stringProperty(QObject* object, const char* name) {
+    if (!object) return QString();
+    const QVariant value = object->property(name);
+    return value.isValid() ? value.toString() : QString();
+}
+
+QRect quickItemScreenRect(QQuickItem* item) {
+    if (!item || !item->window()) return QRect();
+    const QRectF localRect(0, 0, item->width(), item->height());
+    const QRect sceneRect = item->mapRectToScene(localRect).toRect();
+    return QRect(item->window()->mapToGlobal(sceneRect.topLeft()), sceneRect.size());
+}
+
+QString quickControlTypeFor(QQuickItem* item) {
+    if (!item) return QStringLiteral("Object");
+    const QString className = QString::fromLatin1(item->metaObject()->className());
+    if (className.contains(QStringLiteral("TextInput")) ||
+        className.contains(QStringLiteral("TextEdit")))
+        return QStringLiteral("Edit");
+    if (className.contains(QStringLiteral("Button")))
+        return QStringLiteral("Button");
+    if (className.contains(QStringLiteral("CheckBox")) ||
+        className.contains(QStringLiteral("Checkbox")))
+        return QStringLiteral("CheckBox");
+    if (className.contains(QStringLiteral("RadioButton")))
+        return QStringLiteral("RadioButton");
+    if (className.contains(QStringLiteral("Slider")))
+        return QStringLiteral("Slider");
+    if (className.contains(QStringLiteral("Text")))
+        return QStringLiteral("Text");
+    if (className.contains(QStringLiteral("ListView")))
+        return QStringLiteral("List");
+    if (className.contains(QStringLiteral("TableView")))
+        return QStringLiteral("Table");
+    return QStringLiteral("Pane");
+}
+
+QJsonObject summarizeQuickItem(QtObjectStore& store, QQuickItem* item) {
+    QJsonObject result;
+    if (!item) return result;
+    const int id = store.ensureIdFor(item);
+    result["id"] = id;
+    result["name"] = objectNameText(item);
+    result["class"] = item->metaObject()->className();
+    result["control_type"] = controlTypeFor(item);
+    result["rect"] = rectToArray(quickItemScreenRect(item));
+    result["visible"] = item->isVisible();
+    result["enabled"] = boolProperty(item, "enabled", true);
+    result["auto_id"] = item->objectName();
+    result["pid"] = static_cast<qint64>(QCoreApplication::applicationPid());
+    result["value"] = objectValueText(item);
+    return result;
+}
+
+} // namespace
 
 QString controlTypeFor(QObject* object) {
     if (!object) return QStringLiteral("Object");
@@ -54,6 +137,10 @@ QString controlTypeFor(QObject* object) {
         if (qobject_cast<QLabel*>(widget)) return QStringLiteral("Text");
         if (qobject_cast<QGroupBox*>(widget)) return QStringLiteral("GroupBox");
         return QStringLiteral("Pane");
+    }
+    if (qtQuickAvailable()) {
+        if (auto quickItem = dynamic_cast<QQuickItem*>(object))
+            return quickControlTypeFor(quickItem);
     }
     if (qobject_cast<QWindow*>(object))
         return QStringLiteral("Window");
@@ -80,6 +167,18 @@ QString objectValueText(QObject* object) {
     if (auto widget = qobject_cast<QWidget*>(object)) {
         if (!widget->windowTitle().isEmpty()) return widget->windowTitle();
         if (!widget->accessibleName().isEmpty()) return widget->accessibleName();
+    }
+    if (qtQuickAvailable()) {
+        if (auto quickItem = dynamic_cast<QQuickItem*>(object)) {
+            const QString text = stringProperty(quickItem, "text");
+            if (!text.isEmpty()) return text;
+            const QString value = stringProperty(quickItem, "value");
+            if (!value.isEmpty()) return value;
+            const QString title = stringProperty(quickItem, "title");
+            if (!title.isEmpty()) return title;
+            const QString accessibleName = stringProperty(quickItem, "accessibleName");
+            if (!accessibleName.isEmpty()) return accessibleName;
+        }
     }
     if (auto window = qobject_cast<QWindow*>(object)) return window->title();
     return object->objectName();
@@ -128,6 +227,11 @@ QJsonObject summarizeTopLevel(QtObjectStore& store, QObject* object) {
         result["pid"] = static_cast<qint64>(QCoreApplication::applicationPid());
         result["value"] = objectValueText(window);
         return result;
+    }
+
+    if (qtQuickAvailable()) {
+        if (QQuickItem* item = dynamic_cast<QQuickItem*>(object))
+            return summarizeQuickItem(store, item);
     }
 
     // Fallback for unknown top-level types.
@@ -182,6 +286,11 @@ QJsonObject summarizeObject(QtObjectStore& store, QObject* object) {
         result["pid"] = static_cast<qint64>(QCoreApplication::applicationPid());
         result["value"] = objectValueText(window);
         return result;
+    }
+
+    if (qtQuickAvailable()) {
+        if (QQuickItem* item = dynamic_cast<QQuickItem*>(object))
+            return summarizeQuickItem(store, item);
     }
 
     // Fallback for unknown object types.

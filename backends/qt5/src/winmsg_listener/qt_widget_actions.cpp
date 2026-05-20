@@ -8,6 +8,7 @@
 #include <QAbstractItemView>
 #include <QAction>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QGraphicsObject>
 #include <QGraphicsSimpleTextItem>
 #include <QGraphicsTextItem>
@@ -16,6 +17,9 @@
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QMetaObject>
+#include <QMouseEvent>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTimer>
@@ -23,9 +27,21 @@
 #include <QWidget>
 #include <QWindow>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
+
 namespace QtBackend {
 
 namespace {
+
+bool qtQuickAvailable() {
+#ifdef Q_OS_WIN
+    return GetModuleHandleW(L"Qt5Quick.dll") != nullptr;
+#else
+    return true;
+#endif
+}
 
 QAbstractItemView* tableViewForId(QtObjectStore& store, int id, QAbstractItemModel** model, QModelIndex* index, int row, int column) {
     QObject* object = store.objectForId(id);
@@ -131,6 +147,14 @@ QJsonObject handleElementSetFocus(QtObjectStore& store, int id) {
         if (QWindow* window = qobject_cast<QWindow*>(object)) {
             window->requestActivate();
             return replyOk("value", QJsonObject{{"ok", true}});
+        }
+        if (qtQuickAvailable()) {
+        if (QQuickItem* item = dynamic_cast<QQuickItem*>(object)) {
+            if (item->window())
+                item->window()->requestActivate();
+            QMetaObject::invokeMethod(item, "forceActiveFocus", Qt::DirectConnection);
+            return replyOk("value", QJsonObject{{"ok", true}});
+        }
         }
         return replyError(UNSUPPORTED_ACTION, QStringLiteral("Object cannot receive focus"));
     }
@@ -392,6 +416,24 @@ QJsonObject handleElementClick(QtObjectStore& store, int id) {
 
     // 2) QObject.
     if (QObject* object = store.objectForId(id)) {
+        if (qtQuickAvailable()) {
+        if (QQuickItem* item = dynamic_cast<QQuickItem*>(object)) {
+            QQuickWindow* window = item->window();
+            if (!window)
+                return replyError(UNSUPPORTED_ACTION, QStringLiteral("Quick item has no window"));
+            const QPointF center = item->mapToScene(QPointF(item->width() / 2.0, item->height() / 2.0));
+            QTimer::singleShot(0, [window, center]() {
+                QMouseEvent press(QEvent::MouseButtonPress, center, window->mapToGlobal(center.toPoint()),
+                                  Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &press);
+                QMouseEvent release(QEvent::MouseButtonRelease, center, window->mapToGlobal(center.toPoint()),
+                                    Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(window, &release);
+            });
+            return replyOk("value", QJsonObject{{"ok", true}});
+        }
+        }
+
         // QAction: trigger.
         if (QAction* action = qobject_cast<QAction*>(object)) {
             QTimer::singleShot(0, action, &QAction::trigger);

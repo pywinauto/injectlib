@@ -11,12 +11,30 @@
 #include <QGraphicsView>
 #include <QGuiApplication>
 #include <QJsonArray>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QScreen>
 #include <QSet>
 #include <QWidget>
 #include <QWindow>
 
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
+
 namespace QtBackend {
+
+namespace {
+
+bool qtQuickAvailable() {
+#ifdef Q_OS_WIN
+    return GetModuleHandleW(L"Qt6Quick.dll") != nullptr;
+#else
+    return true;
+#endif
+}
+
+} // namespace
 
 QJsonObject handlePing() {
     QJsonObject result;
@@ -129,14 +147,39 @@ QJsonObject handleElementsChildren(QtObjectStore& store, int parentId) {
         }
 
         // 2.b) QWindow.
+        if (qtQuickAvailable()) {
         if (QWindow* parentWindow = qobject_cast<QWindow*>(parent)) {
+            if (QQuickWindow* quickWindow = dynamic_cast<QQuickWindow*>(parentWindow)) {
+                if (QQuickItem* contentItem = quickWindow->contentItem()) {
+                    result.push_back(summarizeObject(store, contentItem));
+                    seen.insert(contentItem);
+                }
+            }
+
             const QObjectList children = parentWindow->children();
             for (QObject* child : children) {
+                if (!child || seen.contains(child)) continue;
                 if (QWindow* childWindow = qobject_cast<QWindow*>(child)) {
                     result.push_back(summarizeObject(store, childWindow));
                     seen.insert(childWindow);
+                } else {
+                    result.push_back(summarizeObject(store, child));
+                    seen.insert(child);
                 }
             }
+        }
+        }
+
+        // 2.c) QQuickItem.
+        if (qtQuickAvailable()) {
+        if (QQuickItem* parentItem = dynamic_cast<QQuickItem*>(parent)) {
+            const auto children = parentItem->childItems();
+            for (QQuickItem* child : children) {
+                if (!child || seen.contains(child)) continue;
+                result.push_back(summarizeObject(store, child));
+                seen.insert(child);
+            }
+        }
         }
 
         return replyOk("value", result);
@@ -166,6 +209,14 @@ QJsonObject handleElementParent(QtObjectStore& store, int id) {
         if (QWidget* widget = qobject_cast<QWidget*>(object)) {
             if (QWidget* parentWidget = widget->parentWidget())
                 return replyOk("value", summarizeObject(store, parentWidget));
+        }
+        if (qtQuickAvailable()) {
+        if (QQuickItem* item = dynamic_cast<QQuickItem*>(object)) {
+            if (QQuickItem* parentItem = item->parentItem())
+                return replyOk("value", summarizeObject(store, parentItem));
+            if (QQuickWindow* window = item->window())
+                return replyOk("value", summarizeObject(store, window));
+        }
         }
         if (QObject* parent = object->parent())
             return replyOk("value", summarizeObject(store, parent));
