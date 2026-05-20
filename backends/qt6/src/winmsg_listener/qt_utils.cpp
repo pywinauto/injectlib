@@ -9,6 +9,7 @@
 #include <QLineEdit>
 #include <QMetaType>
 #include <QMetaObject>
+#include <QMetaProperty>
 #include <QPlainTextEdit>
 #include <QSpinBox>
 #include <QTextEdit>
@@ -172,6 +173,24 @@ bool setQObjectTextOrValue(QObject* object, const QString& text) {
         if (!value.isValid()) return false;
         QMetaObject::invokeMethod(timeEdit, [timeEdit, value]() { timeEdit->setTime(value); }, Qt::QueuedConnection);
         return true;
+    }
+
+    const int textPropIndex = object->metaObject()->indexOfProperty("text");
+    if (textPropIndex >= 0) {
+        QMetaProperty textProp = object->metaObject()->property(textPropIndex);
+        if (textProp.isWritable()) {
+            QMetaObject::invokeMethod(object, [object, text]() { object->setProperty("text", text); }, Qt::QueuedConnection);
+            return true;
+        }
+    }
+
+    const int valuePropIndex = object->metaObject()->indexOfProperty("value");
+    if (valuePropIndex >= 0) {
+        QMetaProperty valueProp = object->metaObject()->property(valuePropIndex);
+        if (valueProp.isWritable()) {
+            QMetaObject::invokeMethod(object, [object, text]() { object->setProperty("value", text); }, Qt::QueuedConnection);
+            return true;
+        }
     }
 
     return QMetaObject::invokeMethod(object, "setText", Qt::QueuedConnection, Q_ARG(QString, text));

@@ -8,7 +8,8 @@ set(CMAKE_AUTOMOC ON)
 find_package(Qt5 COMPONENTS
     Core
     Gui
-    Widgets 
+    Widgets
+    Quick
 REQUIRED)
 
 set(QT5_SRV_PLATFORM_SOURCES)
@@ -44,7 +45,13 @@ target_link_libraries(qt5_srv PRIVATE
     Qt5::Core
     Qt5::Gui
     Qt5::Widgets
+    Qt5::Quick
 )
+
+if(MSVC)
+    target_link_libraries(qt5_srv PRIVATE delayimp)
+    target_link_options(qt5_srv PRIVATE "/DELAYLOAD:Qt5Quick.dll")
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
