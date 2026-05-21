@@ -1,8 +1,12 @@
 import json
 import logging
+import sys
 
-from .injector import Injector
 from .channel import Pipe
+if sys.platform == "win32":
+    from .injector import Injector
+else:
+    from .linux_injector import LinuxInjector as Injector
 
 logger = logging.getLogger(__package__)
 
@@ -51,6 +55,11 @@ class Singleton(type):
 class ConnectionManager(object, metaclass=Singleton):
     def __init__(self):
         self._pipes = {}
+        self._backend_config = {}
+
+    def register_backend(self, pid, backend_name, dll_name):
+        """Register backend to use when injecting into pid. Must be called before the first call_action for that pid."""
+        self._backend_config[pid] = (backend_name, dll_name)
 
     def _get_pipe(self, pid):
         if pid not in self._pipes:
@@ -65,8 +74,12 @@ class ConnectionManager(object, metaclass=Singleton):
             return pipe
         else:
             logger.info('Pipe {} not found, injecting dll to the process'.format(pipe_name))
-            Injector(pid, 'dotnet', 'bootstrap')
-            pipe.connect()
+            # Fallback to dotnet to keep compatibility
+            backend_name, dll_name = self._backend_config.get(pid, ('dotnet', 'bootstrap'))
+            Injector(pid, backend_name, dll_name)
+            if not pipe.connect():
+                raise InjectedRuntimeError(
+                    "Injected server channel did not appear for pid {}".format(pid))
             return pipe
 
     def call_action(self, action_name, pid, **params):

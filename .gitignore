@@ -27,6 +27,8 @@
 *.so
 *.so.*
 *.dylib
+!src/injectlib/libs/qt5/x64/qt5_srv.so
+!src/injectlib/libs/qt6/x64/qt6_srv.so
 
 # Executables
 *.out
